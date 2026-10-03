@@ -34,3 +34,8 @@ to the same room later is not swept up by the ceiling button.
 
 `long_release` is deliberately unused. It only matters for hold-to-ramp, which
 needs a repeat loop and a stop flag and tends to overshoot.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Copy it, change the presets, ship it in your own
+config; attribution is the only condition.

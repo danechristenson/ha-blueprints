@@ -1,0 +1,301 @@
+blueprint:
+  name: IKEA dual button -> lights
+  description: >-
+    Two-button IKEA remote (BILRESA and friends) driving a light or light group.
+
+
+    Each button reports four events and this uses six of the eight. The layout
+    follows the convention IKEA's own remotes use: the top button sets the
+    light, the bottom dims or goes to a night light, and a long press is the
+    extreme of each.
+
+
+    **Double press on the top button cycles presets**, the way a Hue dimmer
+    steps through a room's scenes. The white defaults are Philips' four light
+    recipes -- Relax 2237K, Read 2890K, Concentrate 4292K, Energize 6410K --
+    which most vendors have copied. There is no equivalent cross-vendor
+    standard for colour, so that list is simply a sensible default to edit.
+
+
+    Cycling is stateless: it reads the light's current setting, finds the
+    nearest preset and moves to the next. No counter helper per room, and
+    changing the light by any other means leaves the next press still sensible.
+
+
+    Point it at a **light group** rather than one bulb. Adding a bulb is then a
+    change to the group, and a bedside lamp added to the same room later is not
+    swept up by the ceiling button.
+
+
+    long_release is deliberately unused. It only matters for hold-to-ramp,
+    which needs a repeat loop and a stop flag and tends to overshoot; a fixed
+    step is more predictable.
+  domain: automation
+  source_url: https://github.com/danechristenson/ha-blueprints/blob/main/automation/ikea_dual_button_light.yaml
+  input:
+    buttons:
+      name: Buttons
+      icon: mdi:gesture-tap-button
+      collapsed: false
+      input:
+        top_button:
+          name: Top button
+          description: The event entity for the upper button.
+          selector:
+            entity:
+              filter:
+                - domain: event
+        bottom_button:
+          name: Bottom button
+          description: The event entity for the lower button.
+          selector:
+            entity:
+              filter:
+                - domain: event
+    target:
+      name: Lights
+      icon: mdi:lightbulb-group
+      collapsed: false
+      input:
+        lights:
+          name: Light or light group
+          description: >-
+            A single entity, so the preset cycle can read what the light is
+            currently set to. Use a light group for a room with several bulbs.
+          selector:
+            entity:
+              filter:
+                - domain: light
+    presets:
+      name: Double-press cycle
+      icon: mdi:palette
+      collapsed: true
+      input:
+        cycle_mode:
+          name: Cycle through
+          description: >-
+            Colour temperature suits tunable-white bulbs. Choose colour once the
+            room has colour-capable bulbs. Auto-detection is not offered because
+            white-spectrum bulbs often report a colour mode they cannot really
+            use.
+          default: color_temp
+          selector:
+            select:
+              options:
+                - {value: color_temp, label: Colour temperature}
+                - {value: color, label: Colour}
+        color_temp_presets:
+          name: Colour temperature presets
+          description: Kelvin, in cycle order. Defaults are the Hue light recipes.
+          default: [2237, 2890, 4292, 6410]
+          selector:
+            object:
+        color_presets:
+          name: Colour presets
+          description: >-
+            Hue and saturation pairs, in cycle order. Only used when cycling
+            colour.
+          default: [[30, 90], [120, 70], [210, 80], [285, 70]]
+          selector:
+            object:
+    tuning:
+      name: Tuning
+      icon: mdi:tune
+      collapsed: true
+      input:
+        warm_kelvin:
+          name: Warm colour temperature
+          description: >-
+            Used by the top single press and the night light. A bulb clamps this
+            to its own minimum, so a value below what it supports is silently
+            raised.
+          default: 2202
+          selector:
+            number: {min: 1500, max: 4000, step: 1, unit_of_measurement: K}
+        bright_step:
+          name: Brighten step
+          default: 25
+          selector:
+            number: {min: 1, max: 100, step: 1, unit_of_measurement: "%"}
+        dim_step:
+          name: Dim step
+          description: Negative, since it is applied as a brightness step.
+          default: -33
+          selector:
+            number: {min: -100, max: -1, step: 1, unit_of_measurement: "%"}
+        night_brightness:
+          name: Night light brightness
+          default: 1
+          selector:
+            number: {min: 1, max: 30, step: 1, unit_of_measurement: "%"}
+        off_fade:
+          name: Fade-off seconds
+          description: How long a long press on the bottom button takes to go dark.
+          default: 2
+          selector:
+            number: {min: 0, max: 10, step: 1, unit_of_measurement: s}
+
+mode: single
+
+variables:
+  light_entity: !input lights
+  cycle_mode: !input cycle_mode
+  ct_presets: !input color_temp_presets
+  color_presets: !input color_presets
+  # Nearest-preset-then-advance. Starting from the light's real setting means a
+  # change made from the app or a dashboard does not desynchronise the cycle.
+  next_ct: >-
+    {% set cur = state_attr(light_entity, 'color_temp_kelvin') | int(0) %}
+    {% if cur == 0 or ct_presets | count == 0 %}
+      {{ ct_presets[0] | default(2700) }}
+    {% else %}
+      {% set ns = namespace(best=0, dist=99999999) %}
+      {% for i in range(ct_presets | count) %}
+        {% set d = ((ct_presets[i] | int) - cur) | abs %}
+        {% if d < ns.dist %}{% set ns.dist = d %}{% set ns.best = i %}{% endif %}
+      {% endfor %}
+      {{ ct_presets[(ns.best + 1) % (ct_presets | count)] }}
+    {% endif %}
+  next_color: >-
+    {% set cur = state_attr(light_entity, 'hs_color') %}
+    {% if cur is none or color_presets | count == 0 %}
+      {{ color_presets[0] | default([30, 90]) }}
+    {% else %}
+      {% set ns = namespace(best=0, dist=99999999) %}
+      {% for i in range(color_presets | count) %}
+        {% set dh = ((color_presets[i][0] | float) - (cur[0] | float)) | abs %}
+        {% set dh = [dh, 360 - dh] | min %}
+        {% if dh < ns.dist %}{% set ns.dist = dh %}{% set ns.best = i %}{% endif %}
+      {% endfor %}
+      {{ color_presets[(ns.best + 1) % (color_presets | count)] }}
+    {% endif %}
+
+triggers:
+  - trigger: event.received
+    id: top
+    target:
+      entity_id: !input top_button
+    options:
+      event_type: [multi_press_1]
+  - trigger: event.received
+    id: top_double
+    target:
+      entity_id: !input top_button
+    options:
+      event_type: [multi_press_2]
+  - trigger: event.received
+    id: top_hold
+    target:
+      entity_id: !input top_button
+    options:
+      event_type: [long_press]
+  - trigger: event.received
+    id: bottom
+    target:
+      entity_id: !input bottom_button
+    options:
+      event_type: [multi_press_1]
+  - trigger: event.received
+    id: bottom_double
+    target:
+      entity_id: !input bottom_button
+    options:
+      event_type: [multi_press_2]
+  - trigger: event.received
+    id: bottom_hold
+    target:
+      entity_id: !input bottom_button
+    options:
+      event_type: [long_press]
+
+conditions: []
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: top
+        sequence:
+          - action: light.toggle
+            target:
+              entity_id: !input lights
+            data:
+              transition: 0
+              color_temp_kelvin: !input warm_kelvin
+              brightness_pct: 100
+      - conditions:
+          - condition: trigger
+            id: top_double
+        sequence:
+          # Stepping the preset on a light that is off would be invisible, so
+          # bring it up at the first preset instead.
+          - choose:
+              - conditions:
+                  - "{{ cycle_mode == 'color' }}"
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      entity_id: !input lights
+                    data:
+                      transition: 1
+                      hs_color: "{{ next_color }}"
+            default:
+              - action: light.turn_on
+                target:
+                  entity_id: !input lights
+                data:
+                  transition: 1
+                  color_temp_kelvin: "{{ next_ct }}"
+      - conditions:
+          - condition: trigger
+            id: top_hold
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: !input lights
+            data:
+              transition: 1
+              brightness_step_pct: !input bright_step
+      - conditions:
+          - condition: trigger
+            id: bottom
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input lights
+                    state: "on"
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      entity_id: !input lights
+                    data:
+                      transition: 1
+                      brightness_step_pct: !input dim_step
+            default:
+              - action: light.turn_on
+                target:
+                  entity_id: !input lights
+                data:
+                  transition: 1
+                  brightness_pct: 100
+      - conditions:
+          - condition: trigger
+            id: bottom_double
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: !input lights
+            data:
+              transition: 1
+              color_temp_kelvin: !input warm_kelvin
+              brightness_pct: !input night_brightness
+      - conditions:
+          - condition: trigger
+            id: bottom_hold
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: !input lights
+            data:
+              transition: !input off_fade

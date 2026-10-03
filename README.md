@@ -14,8 +14,24 @@ https://github.com/danechristenson/ha-blueprints/blob/main/automation/ikea_dual_
 
 | | press | double press | hold |
 |---|---|---|---|
-| **Top** | toggle, warm, full | cycle presets | brighter |
-| **Bottom** | dim a step, or full if off | night light | fade off |
+| **Top** | toggle, on at your chosen tone | next preset | brighten until released |
+| **Bottom** | off | night light | dim until released |
+
+All eight button events are used.
+
+Holding ramps continuously and stops on release. That needs `mode: restart` —
+the release event re-enters the automation, abandoning the running loop. The
+loop is also step-bounded, so a lost release event stops the ramp rather than
+running it to the limit. Dimming stops at the dimmest the bulb will hold, so
+holding too long never loses the light.
+
+Bottom single press is a plain **off** rather than a dim step, since holding
+already dims. In the dark that gives one button that always turns the light
+off, with no risk of toggling it back on.
+
+The turn-on tone defaults to 2000 K, below most bulbs' floor. Home Assistant
+clamps it, so it lands on the warmest each bulb can manage — set it exactly if
+you want a specific tone.
 
 Double press cycles Philips' four light recipes by default — Relax 2237 K,
 Read 2890 K, Concentrate 4292 K, Energize 6410 K — the same way a Hue dimmer

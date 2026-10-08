@@ -1,0 +1,104 @@
+blueprint:
+  name: Gradual wake-up light
+  description: Slowly ramps a light up at a set time, and skips days when a calendar event (e.g. a holiday) is active.
+  domain: automation
+  source_url: https://github.com/danechristenson/ha-blueprints/blob/main/automation/gradual_wake_up_light.yaml
+  input:
+    light_entity:
+      name: Light
+      selector:
+        entity:
+          domain: light
+    wake_time:
+      name: Wake time
+      default: "07:00:00"
+      selector:
+        time:
+    weekdays:
+      name: Days
+      default: [mon, tue, wed, thu, fri]
+      selector:
+        select:
+          multiple: true
+          options:
+            - { label: Monday, value: mon }
+            - { label: Tuesday, value: tue }
+            - { label: Wednesday, value: wed }
+            - { label: Thursday, value: thu }
+            - { label: Friday, value: fri }
+            - { label: Saturday, value: sat }
+            - { label: Sunday, value: sun }
+    skip_calendar:
+      name: Skip calendar (optional)
+      description: If an event is active on this calendar at wake time (such as a holiday), the light won't turn on. Leave empty to disable.
+      default: ""
+      selector:
+        entity:
+          domain: calendar
+    duration:
+      name: Ramp duration (seconds)
+      default: 300
+      selector:
+        number:
+          min: 10
+          max: 3600
+          unit_of_measurement: s
+    max_brightness:
+      name: Final brightness (%)
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    color_temp:
+      name: Color temperature (K)
+      default: 4778
+      selector:
+        number:
+          min: 2000
+          max: 6500
+          unit_of_measurement: K
+    reset_first:
+      name: Reset to minimum brightness first
+      description: Useful if the light might already be on at wake time.
+      default: true
+      selector:
+        boolean:
+
+mode: single
+
+variables:
+  reset_first: !input reset_first
+  skip_calendar: !input skip_calendar
+
+triggers:
+  - trigger: time
+    at: !input wake_time
+
+conditions:
+  - condition: time
+    weekday: !input weekdays
+  - condition: template
+    value_template: >
+      {{ skip_calendar == '' or is_state(skip_calendar, 'off') }}
+
+actions:
+  - if:
+      - condition: template
+        value_template: "{{ reset_first }}"
+    then:
+      - action: light.turn_on
+        target:
+          entity_id: !input light_entity
+        data:
+          transition: 0
+          brightness: 1
+          color_temp_kelvin: !input color_temp
+  - action: light.turn_on
+    target:
+      entity_id: !input light_entity
+    data:
+      transition: !input duration
+      brightness_pct: !input max_brightness
+      color_temp_kelvin: !input color_temp

@@ -1,5 +1,14 @@
 # Home Assistant blueprints
 
+Three automation blueprints. Each one carries a `source_url`, so **Re-import
+blueprint** picks up changes from here and keeps your inputs.
+
+| | |
+|---|---|
+| [IKEA dual button → lights](#ikea-dual-button--lights) | a two-button remote driving a light group |
+| [Gradual wake-up light](#gradual-wake-up-light) | ramps a light up at a set time |
+| [Gradual bedtime fade](#gradual-bedtime-fade) | fades a light out, with nudges |
+
 ## IKEA dual button → lights
 
 A two-button IKEA remote (BILRESA and friends) driving a light or light group
@@ -10,12 +19,9 @@ over Matter. All eight button events are mapped.
 | **Top** | toggle, on at your chosen tone | next preset | brighten until released |
 | **Bottom** | off | night light | dim until released |
 
-### Install
-
 [![Open your Home Assistant instance and show the blueprint import dialog with this blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdanechristenson%2Fha-blueprints%2Fblob%2Fmain%2Fautomation%2Fikea_dual_button_light.yaml)
 
-Or by hand — **Settings → Automations & scenes → Blueprints → Import
-blueprint**, and paste:
+Or paste this into **Settings → Automations & scenes → Blueprints → Import blueprint**:
 
 ```
 https://github.com/danechristenson/ha-blueprints/blob/main/automation/ikea_dual_button_light.yaml
@@ -25,18 +31,12 @@ https://github.com/danechristenson/ha-blueprints/blob/main/automation/ikea_dual_
 
 1. **Make a light group first.** Settings → Devices & services → Helpers →
    Create helper → Group → Light. Put the room's ceiling bulbs in it.
-2. Settings → Automations & scenes → **Create automation → Use blueprint →
-   IKEA dual button → lights**.
+2. **Create automation → Use blueprint → IKEA dual button → lights**.
 3. Pick the two event entities and the group. Everything else has a default.
 
 Adding a bulb later is a change to the group, not to the automation. A bedside
 lamp added to the same room is not swept up by the ceiling button, which is why
 this takes a group rather than an area.
-
-### Updating
-
-Blueprints → the three-dot menu on this blueprint → **Re-import blueprint**.
-That works because the file carries a `source_url`; your inputs are kept.
 
 ### Options
 
@@ -85,6 +85,114 @@ know the number. Set it exactly if a room wants a specific tone.
 
 **`lights` takes a single entity, not a target**, because the preset cycle and
 the ramp both read the light's current state and a target has none.
+
+## Gradual wake-up light
+
+Brings a light up from almost nothing to full at a set time, on the days you
+choose, and stays off on days when an event is running on a calendar you
+nominate — a holiday calendar, for instance.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdanechristenson%2Fha-blueprints%2Fblob%2Fmain%2Fautomation%2Fgradual_wake_up_light.yaml)
+
+Or paste this into **Settings → Automations & scenes → Blueprints → Import blueprint**:
+
+```
+https://github.com/danechristenson/ha-blueprints/blob/main/automation/gradual_wake_up_light.yaml
+```
+
+### Options
+
+Only the light is required.
+
+| | default | |
+|---|---|---|
+| `light_entity` | — | the light to bring up |
+| `wake_time` | 07:00 | when the ramp starts |
+| `weekdays` | Mon–Fri | days it runs |
+| `skip_calendar` | none | an active event here cancels the day; leave empty to disable |
+| `duration` | 300 s | how long the ramp takes |
+| `max_brightness` | 100% | where it finishes |
+| `color_temp` | 4778 K | tone held throughout |
+| `reset_first` | on | jump to minimum brightness before ramping |
+
+### Why it behaves the way it does
+
+**The ramp is one service call, not a loop.** `light.turn_on` with a
+`transition` hands the fade to the bulb, so there is no repeat running for five
+minutes, nothing to drift, and a restart mid-ramp cannot leave the light
+stranded at an arbitrary level.
+
+**`reset_first` exists because a transition from full brightness does
+nothing visible.** If the light is already on when the alarm comes round, the
+ramp has nowhere to go; dropping to brightness 1 first makes the sunrise work
+regardless of how the light was left.
+
+**The calendar check is a condition, not a trigger.** It is read at wake time
+only, so creating a holiday event the night before is enough — nothing has to
+re-evaluate at midnight.
+
+**An empty calendar is handled explicitly.** The template passes when
+`skip_calendar` is blank, so the input stays genuinely optional rather than
+needing a dummy entity.
+
+## Gradual bedtime fade
+
+Takes a light from full to off over ten minutes, pulsing as it goes so the fade
+is noticed rather than just happening. Does nothing if the light is already
+off, and switching the light off by hand abandons the fade.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdanechristenson%2Fha-blueprints%2Fblob%2Fmain%2Fautomation%2Fgradual_bedtime_fade.yaml)
+
+Or paste this into **Settings → Automations & scenes → Blueprints → Import blueprint**:
+
+```
+https://github.com/danechristenson/ha-blueprints/blob/main/automation/gradual_bedtime_fade.yaml
+```
+
+### The ten minutes
+
+| | |
+|---|---|
+| 0:00 | jumps to 100% |
+| 0:00 → 5:00 | fades to 50% |
+| 5:00 → 9:00 | each minute: pulses, then drops 5% — one pulse in the first minute, four in the fourth |
+| 9:00 → 9:50 | fades to 10% |
+| 9:50 | one last pulse |
+| 9:51 → 10:00 | down to 1%, then off |
+
+### Options
+
+Only the light is required.
+
+| | default | |
+|---|---|---|
+| `light_entity` | — | one light or several |
+| `bedtime` | 22:00 | when the fade starts |
+| `weekdays` | every day | days it runs |
+| `pulse_boost` | 15% | how far a pulse jumps above the current level |
+
+### Why it behaves the way it does
+
+**Pulses get more frequent as time runs out** — one in the first minute, four
+in the fourth. A steady fade is easy to miss; an accelerating one reads as
+urgency without needing sound.
+
+**Switching the light off by hand ends it.** The light's own `off` is a
+trigger, and `mode: restart` means that trigger cancels the fade in progress.
+The new run then stops at its first condition, which requires the bedtime
+trigger. No helper, no flag.
+
+**It checks the light is on before starting.** A bedtime fade on an already-dark
+room would switch the light *on* at 100%, which is the opposite of the point.
+
+**Timings are fixed rather than scaled.** The pulse schedule is tuned to the
+ten minutes; making the duration an input would mean either stretching the
+pulses until they stop reading as urgent, or recomputing the whole ladder.
+Change `transition` and `delay` in step if you want a different length.
+
+**With several lights, all of them must be on for the fade to start.** A state
+condition over a list requires every entity to match. That suits a set of bulbs
+in one room, which is the intended use.
 
 ## Licence
 

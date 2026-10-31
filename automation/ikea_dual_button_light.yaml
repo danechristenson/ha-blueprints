@@ -37,6 +37,13 @@ blueprint:
     Point it at a **light group** rather than one bulb. Adding a bulb is then a
     change to the group, and a bedside lamp added to the same room later is not
     swept up by the ceiling button.
+
+
+    **Rooms of on/off lights** (smart plugs) have no use for presets or
+    dimming. List them under *Individual lights* and each gets a gesture of its
+    own that toggles just that light: top double press, bottom double press,
+    top hold, bottom hold, in that order. Gestures with no light listed keep
+    their usual job.
   domain: automation
   source_url: https://github.com/danechristenson/ha-blueprints/blob/main/automation/ikea_dual_button_light.yaml
   input:
@@ -117,6 +124,24 @@ blueprint:
           default: [[30, 90], [120, 70], [210, 80], [285, 70]]
           selector:
             object:
+    individual:
+      name: Individual lights
+      icon: mdi:lightbulb-multiple-outline
+      collapsed: true
+      input:
+        individual_lights:
+          name: One light per gesture
+          description: >-
+            Up to four lights, in order: top double press, bottom double press,
+            top hold, bottom hold. Each of those gestures then toggles its light
+            alone instead of its usual job. Meant for on/off lights such as smart
+            plugs; leave empty to keep presets, night light and dimming.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: light
     tuning:
       name: Tuning
       icon: mdi:tune
@@ -160,6 +185,10 @@ variables:
   ct_presets: !input color_temp_presets
   color_presets: !input color_presets
   ramp_step: !input ramp_step
+  individual: !input individual_lights
+  # Which individual light this gesture owns, or -1 for gestures that never do.
+  slot: >-
+    {{ {'top_double': 0, 'bottom_double': 1, 'top_hold': 2, 'bottom_hold': 3}.get(trigger.id, -1) }}
   # Nearest-preset-then-advance. Starting from the light's real setting means a
   # change made from the app or a dashboard does not desynchronise the cycle.
   next_ct: >-
@@ -249,6 +278,16 @@ actions:
             id: released
         sequence:
           - stop: button released
+
+      # A gesture that owns an individual light toggles it and does nothing
+      # else. Ahead of the usual branches so it replaces them.
+      - conditions:
+          - condition: template
+            value_template: "{{ 0 <= slot | int < individual | count }}"
+        sequence:
+          - action: light.toggle
+            target:
+              entity_id: "{{ individual[slot | int] }}"
 
       - conditions:
           - condition: trigger

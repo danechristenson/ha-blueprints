@@ -53,8 +53,24 @@ defaults:
 | `ramp_interval` | 300 ms | time between ticks while held |
 | `night_brightness` | 1% | bottom double press |
 | `off_fade` | 2 s | bottom single press |
+| `individual_lights` | none | up to four lights, one per gesture (see below) |
 
 Defaults give a ramp of roughly four seconds end to end.
+
+### Rooms of on/off lights
+
+Smart plugs and other on/off lights have no use for presets or dimming. List
+them under **Individual lights** and each one gets a gesture of its own that
+toggles just that light:
+
+| | double press | hold |
+|---|---|---|
+| **Top** | light 1 | light 3 |
+| **Bottom** | light 2 | light 4 |
+
+Single presses still act on the whole group: top toggles it, bottom turns it
+off. A gesture with no light listed keeps its usual job, so a room with two
+plugs still ramps on hold.
 
 ### Why it behaves the way it does
 

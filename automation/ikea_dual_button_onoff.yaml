@@ -1,0 +1,153 @@
+blueprint:
+  name: IKEA dual button -> on/off lights
+  description: >-
+    Two-button IKEA remote (BILRESA and friends) driving a room of on/off
+    lights, such as smart plugs, a Christmas tree, or a colour lamp you would
+    rather leave as it is.
+
+
+    | | press | double press | hold |
+
+    |---|---|---|---|
+
+    | **Top** | toggle the group | toggle light 1 | toggle light 3 |
+
+    | **Bottom** | group off | toggle light 2 | toggle light 4 |
+
+
+    Nothing here sends a brightness or a colour. A light that remembers its
+    last setting comes back on exactly as it was, which is the point: a
+    remote that drives several different lights at once cannot sensibly dim
+    or recolour them. For a room of dimmable bulbs use
+    *IKEA dual button -> lights* instead.
+
+
+    Point it at a **light group** for the single presses. Smart plugs join a
+    light group once they are wrapped with the *Change device type of a
+    switch* helper. A gesture with no light listed does nothing.
+  domain: automation
+  source_url: https://github.com/danechristenson/ha-blueprints/blob/main/automation/ikea_dual_button_onoff.yaml
+  input:
+    buttons:
+      name: Buttons
+      icon: mdi:gesture-tap-button
+      collapsed: false
+      input:
+        top_button:
+          name: Top button
+          description: The event entity for the upper button.
+          selector:
+            entity:
+              filter:
+                - domain: event
+        bottom_button:
+          name: Bottom button
+          description: The event entity for the lower button.
+          selector:
+            entity:
+              filter:
+                - domain: event
+    target:
+      name: Lights
+      icon: mdi:lightbulb-group
+      collapsed: false
+      input:
+        lights:
+          name: Light or light group
+          description: >-
+            What the single presses act on: top toggles it, bottom turns it
+            off. Use a light group for a room with several lights.
+          selector:
+            entity:
+              filter:
+                - domain: light
+        individual_lights:
+          name: One light per gesture
+          description: >-
+            Up to four lights, in order: top double press, bottom double press,
+            top hold, bottom hold. Each of those gestures toggles its light
+            alone.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: light
+
+# No ramps here, so nothing needs interrupting. Queued keeps quick successive
+# presses rather than dropping them.
+mode: queued
+max: 10
+
+variables:
+  individual: !input individual_lights
+  # Which individual light this gesture owns, or -1 for the single presses.
+  slot: >-
+    {{ {'top_double': 0, 'bottom_double': 1, 'top_hold': 2, 'bottom_hold': 3}.get(trigger.id, -1) }}
+
+triggers:
+  - trigger: event.received
+    id: top
+    target:
+      entity_id: !input top_button
+    options:
+      event_type: [multi_press_1]
+  - trigger: event.received
+    id: top_double
+    target:
+      entity_id: !input top_button
+    options:
+      event_type: [multi_press_2]
+  - trigger: event.received
+    id: top_hold
+    target:
+      entity_id: !input top_button
+    options:
+      event_type: [long_press]
+  - trigger: event.received
+    id: bottom
+    target:
+      entity_id: !input bottom_button
+    options:
+      event_type: [multi_press_1]
+  - trigger: event.received
+    id: bottom_double
+    target:
+      entity_id: !input bottom_button
+    options:
+      event_type: [multi_press_2]
+  - trigger: event.received
+    id: bottom_hold
+    target:
+      entity_id: !input bottom_button
+    options:
+      event_type: [long_press]
+
+conditions: []
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: top
+        sequence:
+          - action: light.toggle
+            target:
+              entity_id: !input lights
+
+      - conditions:
+          - condition: trigger
+            id: bottom
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: !input lights
+
+      # Every other gesture owns one light, if one is listed for it.
+      - conditions:
+          - condition: template
+            value_template: "{{ 0 <= slot | int < individual | count }}"
+        sequence:
+          - action: light.toggle
+            target:
+              entity_id: "{{ individual[slot | int] }}"

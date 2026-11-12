@@ -1,11 +1,12 @@
 # Home Assistant blueprints
 
-Three automation blueprints. Each one carries a `source_url`, so **Re-import
+Four automation blueprints. Each one carries a `source_url`, so **Re-import
 blueprint** picks up changes from here and keeps your inputs.
 
 | | |
 |---|---|
-| [IKEA dual button → lights](#ikea-dual-button--lights) | a two-button remote driving a light group |
+| [IKEA dual button → lights](#ikea-dual-button--lights) | a two-button remote dimming a group of bulbs |
+| [IKEA dual button → on/off lights](#ikea-dual-button--onoff-lights) | a two-button remote switching on/off lights, one gesture each |
 | [Gradual wake-up light](#gradual-wake-up-light) | ramps a light up at a set time |
 | [Gradual bedtime fade](#gradual-bedtime-fade) | fades a light out, with nudges |
 
@@ -53,24 +54,11 @@ defaults:
 | `ramp_interval` | 300 ms | time between ticks while held |
 | `night_brightness` | 1% | bottom double press |
 | `off_fade` | 2 s | bottom single press |
-| `individual_lights` | none | up to four lights, one per gesture (see below) |
 
 Defaults give a ramp of roughly four seconds end to end.
 
-### Rooms of on/off lights
-
-Smart plugs and other on/off lights have no use for presets or dimming. List
-them under **Individual lights** and each one gets a gesture of its own that
-toggles just that light:
-
-| | double press | hold |
-|---|---|---|
-| **Top** | light 1 | light 3 |
-| **Bottom** | light 2 | light 4 |
-
-Single presses still act on the whole group: top toggles it, bottom turns it
-off. A gesture with no light listed keeps its usual job, so a room with two
-plugs still ramps on hold.
+Rooms of smart plugs, or of lights too different to share one brightness or
+colour, want [the on/off blueprint](#ikea-dual-button--onoff-lights) instead.
 
 ### Why it behaves the way it does
 
@@ -101,6 +89,45 @@ know the number. Set it exactly if a room wants a specific tone.
 
 **`lights` takes a single entity, not a target**, because the preset cycle and
 the ramp both read the light's current state and a target has none.
+
+## IKEA dual button → on/off lights
+
+The same remote for a room of on/off lights: smart plugs, a Christmas tree, or
+a colour lamp you would rather leave as you set it. Each extra gesture toggles
+one light of its own.
+
+| | press | double press | hold |
+|---|---|---|---|
+| **Top** | toggle the group | light 1 | light 3 |
+| **Bottom** | group off | light 2 | light 4 |
+
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fdanechristenson%2Fha-blueprints%2Fblob%2Fmain%2Fautomation%2Fikea_dual_button_onoff.yaml)
+
+Or paste this into **Settings → Automations & scenes → Blueprints → Import blueprint**:
+
+```
+https://github.com/danechristenson/ha-blueprints/blob/main/automation/ikea_dual_button_onoff.yaml
+```
+
+### Options
+
+| | default | |
+|---|---|---|
+| `top_button`, `bottom_button` | — | the two event entities |
+| `lights` | — | the light group the single presses act on |
+| `individual_lights` | none | up to four lights, in gesture order: top double, bottom double, top hold, bottom hold |
+
+A gesture with no light listed does nothing. Smart plugs join a light group
+once wrapped with the **Change device type of a switch** helper.
+
+### Why it behaves the way it does
+
+**Nothing sends a brightness or colour.** One remote driving several unlike
+lights cannot sensibly dim or recolour them all, so it only switches. A light
+that remembers its last setting comes back exactly as you left it.
+
+**`mode: queued`, not restart.** There are no ramps to interrupt, so quick
+successive presses are queued rather than cancelling each other.
 
 ## Gradual wake-up light
 
